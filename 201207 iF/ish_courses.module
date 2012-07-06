@@ -1,0 +1,1087 @@
+<?php
+// $Id$
+/**
+* @file
+* A module providing Depth fields to Views.
+*
+*/
+
+
+/**
+* Implements answer form().
+*/
+function ish_courses_form_answer($form_state) {
+
+	
+	//dpm($form_state);
+	// http://drupal.org/node/751826
+	// http://api.drupal.org/api/drupal/includes!common.inc/function/entity_load/7
+	
+	//$query = new EntityFieldQuery();
+
+	//$query
+		//->entityCondition('entity_type', 'field_collection_item', '=');
+		//->propertyCondition('bundle', 'field_answer_collection', '=');
+		
+	//$result = $query->execute();
+	
+	$form['questionform'] = array(
+		'#type' => 'fieldset',
+		'#title' => t('Answers'),
+		'#tree' => TRUE,
+	  );
+	
+	//dpm(variable_get('choicefield'));
+	
+	$form['questionform']['choicefield'] = array(
+		'#type' => 'radios',
+		//'#title' => t('Select answer'),
+		'#default_value' =>  variable_get('choicefield', 0),
+		'#options' => getAnswerOptions(),
+		'#description' => t('Select the answer you think is correct and press Answer button'),
+	  );
+	
+	//$form['hidden'] = array('#type' => 'value', '#value' => 'is_it_here');
+	$form['submit'] = array('#type' => 'submit', '#value' => t('Answer'));
+	
+	return $form;
+}
+
+function getAnswerOptionIds() {
+	$ids = array();
+	if (arg(0) == 'node' && is_numeric(arg(1)) )
+	{
+		$question = node_load( arg(1));
+		if (is_array($question->field_answer_collection['und'])
+			&& count($question->field_answer_collection['und']))
+		{
+			foreach($question->field_answer_collection['und'] as $qentity)
+			{
+				array_push($ids, $qentity['value']);
+			}
+		}
+	}
+
+	$resultAnswers = entity_load('field_collection_item', $ids);
+	
+	return $resultAnswers;
+}
+
+function getAnswerOptions() {
+	
+	$options = array();
+	$resultAnswers = getAnswerOptionIds();
+	
+	foreach ($resultAnswers as $ida => $answer)
+	{
+		if (isset($answer->field_answer_text['und']))
+		{
+			$options[$ida] = $answer->field_answer_text['und'][0]['value'];
+		}
+	}
+	
+	return $options;
+}
+
+function ish_courses_form_answer_validate($form, &$form_state) {
+  
+	// Display error message if no answer was selected
+	if (!$form_state['values']['questionform']['choicefield']) {
+		form_set_error('', t('You must select an answer.'));
+		return;
+	}
+	
+	// Display error message or continue
+	$resultAnswers = getAnswerOptionIds();
+	if (!$resultAnswers[$form_state['values']['questionform']['choicefield']]->field_answer_bool_correct['und'][0]['value'])
+	{
+		form_set_error('', t('Incorrect answer. Details: ' . $resultAnswers[$form_state['values']['questionform']['choicefield']]->field_hint_text['und'][0]['value']));
+		return;
+	}
+	//$resultAnswers[$form_state['values']['questionform']['choicefield']]
+}
+
+/*
+function ish_courses_form_answer_submit($form, &$form_state) {
+	//$form['questionform']['choicefield']['#default_value'] = $form_state['values']['questionform']['choicefield'];
+	//$form['questionform']['choicefield']['#default_value'] = variable_get('choicefield', 0);
+	//dpm($form);
+	//dpm($form_state);
+}
+*/
+
+/**
+ * Form to finish course.
+ */
+function ish_courses_finish_btn_form($form_state) {
+	
+	$contentToLoad = node_load(arg(1));
+	$courseToCompleteNID = $contentToLoad->field_course_ref['und']['0']['nid'];
+	
+	
+	$formFinish['finishform'] = array(
+		'#tree' => TRUE,
+	  );
+	
+	$formFinish['finishform']['course_id'] = array('#type' => 'hidden', '#default_value' => $courseToCompleteNID);
+	//$formFinish['#action'] = url('node/'.$courseToCompleteNID, array('absolute' => true));
+	$formFinish['submit'] = array('#type' => 'submit', '#value' => t('Finish'));
+	
+	return $formFinish;
+	
+	
+	//$form = array();
+	/*
+	$form['finish_btn_form'] = array(
+		//'#type' => 'fieldset',
+		//'#title' => t('Answers'),
+		
+		'#tree' => TRUE,
+	);
+	
+	
+	$form['course_id'] = array('#type' => 'hidden', '#default_value' => $courseToCompleteNID);
+	//$form['#action'] = url('node/'.$courseToCompleteNID, array('absolute' => true));
+	$form['submit'] = array('#type' => 'submit', '#value' => strtoupper(t('Finish')));
+	*/
+	/*
+	$form['#validate'][] = 'ish_courses_finish_btn_form_validate';
+	$form['#submit'][] = 'ish_courses_finish_btn_form_submit';
+	*/
+	
+	//return $form;
+}
+
+/*
+function ish_courses_finish_btn_form_submit($form, &$form_state) {
+	drupal_set_message('Congratulations! Course completed.');
+}
+*/
+
+function ish_courses_finish_btn_form_validate($form, &$form_state) {
+	
+	//form_set_error('', t('Bad.'));
+	
+	global $user;
+	$courseNID = $form_state['values']['finishform']['course_id'];
+	//dpm($form_state['values']);
+	
+	if ($courseNID)
+	{
+		$query = new EntityFieldQuery();
+		$result = $query
+			->entityCondition('entity_type', 'node')
+			->propertyCondition('status', 1)
+			->propertyCondition('type', 'purchased_course')
+			->fieldCondition('field_user_ref', 'uid', $user->uid, '=')
+			->fieldCondition('field_purchased_course_ref', 'nid', $courseNID, '=')
+			->execute();
+		
+		//dpm($result['node']);
+		
+		// Check if course purchased
+		if (is_array($result) && isset($result['node']))
+		{
+			// TODO: log error if more than one result
+			
+			$purchasedCourseNID = 0;
+			foreach($result['node'] as $record) 
+			{
+				$purchasedCourse = node_load($record->nid);
+				if ($purchasedCourse->field_completed['und']['0']['value'] == '0')
+				{
+					$purchasedCourse->field_completed['und']['0']['value'] = '1';
+					$purchasedCourse->field_completion_date = array('und' => array('0' => array(
+							'value' => '' . format_date(mktime(), 'short'), //date('Y-m-d H:i:s', 'medium'),
+							//'timezone' => 'Australia/Brisbane',
+							'timezone' => 'Europe/London',
+							'timezone_db' => 'UTC',
+							'date_type' => 'datetime',
+						)));
+					node_save($purchasedCourse);
+					drupal_set_message('Congratulations! Course completed.');
+					drupal_goto('node/' . $courseNID);
+				}
+				else
+				{
+					form_set_error('', t('Course already completed.'));
+					return;
+				}
+				
+				break;
+			}
+		}
+		else
+		{
+			form_set_error('', t('Unable to complete the course. Please contact administrator'));
+			return;
+		}
+	}
+	else
+	{
+		form_set_error('', t('Unable to complete the course. Please contact administrator'));
+		return;
+	}
+	
+}
+
+/*
+function ish_courses_validate_form($form_id, &$form, &$form_state) {
+	dpm($form_id);
+}
+
+function ish_courses_finish_btn_form_submit($form, &$form_state) {
+}
+*/
+
+
+function ish_courses_process_course_navigation_markup()
+{
+	$resultHTML = '';
+	//$results = views_get_view_result('purchased_courses', 'block_purchcontent_prevnext');
+	
+	// Get currently displayed content
+	$nodeContent = node_load(arg(1));
+	$courseNID = $nodeContent->field_course_ref['und']['0']['nid'];
+	
+	// Get all course content
+	$queryContent = new EntityFieldQuery();
+	$resultContent = $queryContent
+		->entityCondition('entity_type', 'node')
+		->propertyCondition('status', 1)
+		->propertyCondition('type', array('course_page', 'course_question'), 'in')
+		->fieldCondition('field_course_ref', 'nid', $courseNID, '=')
+		->fieldOrderBy("weight", 'value', "asc")
+		->execute();
+
+	if (is_array($resultContent) && isset($resultContent['node']))
+	{
+		$courseContentKeys = array_keys($resultContent['node']);
+		//dpm($courseContentKeys);
+	//}
+	
+		// TODO: can redo it without for
+		for($i=0; $i < count($courseContentKeys); $i++)
+		{
+		//break;
+		// If current id
+			if (arg(0) == 'node' && is_numeric(arg(1)) 
+						&& ($courseContentKeys[$i] == arg(1))
+						) // make sure current id equals current content id !important
+			{
+				// Save statistics START
+				// Stat 1: Log purchased course
+				global $user;
+				$roleKeys = array_keys($user->roles);
+				$nodeContent = node_load(arg(1));
+				
+				if ((array_search(3, $roleKeys) === false) && (array_search(8, $roleKeys) === false)) // skip purchase check and login for admin
+				{
+					$queryStat1 = new EntityFieldQuery();
+					$resultStat1 = $queryStat1
+						->entityCondition('entity_type', 'node')
+						->propertyCondition('status', 1)
+						->propertyCondition('type', 'purchased_course')
+						->fieldCondition('field_user_ref', 'uid', $user->uid, '=')
+						->fieldCondition('field_purchased_course_ref', 'nid', $nodeContent->field_course_ref['und']['0']['nid'], '=')
+						->execute();
+					
+					// Check if course purchased
+					if (is_array($resultStat1) && isset($resultStat1['node']))
+					{
+						// TODO: log error if more than one result
+						//$purchasedCourseNID = 0;
+						foreach($resultStat1['node'] as $recordStat1) 
+						{
+							//$purchasedCourseNID = $recordStat1->nid;
+							$nodeStat1 = node_load($recordStat1->nid);
+							//dpm($nodeStat1);
+							$nodeStat1->field_last_content_ref = array('und' => array('0' => array('nid' => arg(1))));
+							/*
+							$nodeStat1->field_last_content_date = array('und' => array('0' => array(
+								'value' => date('Y-m-d H:i:s'),
+								'timezone' => 'Australia/Brisbane',
+								'timezone_db' => 'UTC',
+								'date_type' => 'datetime',
+							)));
+							*/
+							node_save($nodeStat1);
+							break;
+						}
+					}
+					else
+					{
+						// Redirect restricted user to course
+						// TODO: log error user should not be here
+						drupal_goto('node/' . $nodeContent->field_course_ref['und']['0']['nid']);
+					}
+					
+					// Stat 2: Log page visited
+					$queryStat2 = new EntityFieldQuery();
+					$resultStat2 = $queryStat2
+						->entityCondition('entity_type', 'node')
+						->propertyCondition('status', 1)
+						->propertyCondition('type', 'log_page_visited')
+						->fieldCondition('field_user_ref', 'uid', $user->uid, '=')
+						->fieldCondition('field_course_content_ref', 'nid', arg(1), '=')
+						->execute();
+					
+					// Check if course purchased
+					if (is_array($resultStat2) && isset($resultStat2['node']))
+					{
+						// TODO: log error if more than one result
+						//$purchasedCourseNID = 0;
+						foreach($resultStat2['node'] as $recordStat2) 
+						{
+							$nodeStat2 = node_load($recordStat2->nid);
+							/*
+							$nodeStat2->field_date_log = array('und' => array('0' => array(
+								'value' => date('Y-m-d H:i:s'),
+								'timezone' => 'Australia/Brisbane',
+								'timezone_db' => 'UTC',
+								'date_type' => 'datetime',
+							)));
+							*/
+							node_save($nodeStat2);
+							break;
+						}
+					}
+					else
+					{
+						// Create new log_page_visited
+						$nodeLogPage = new stdClass();
+						$nodeLogPage->type = 'log_page_visited';
+						node_object_prepare($nodeLogPage);
+
+						// Set necessary values
+						$nodeLogPage->title = "Autopagelog-" . $user->uid . "-" . arg(1) . "-" . date("YmdHis");
+						$nodeLogPage->field_course_content_ref['und']['0']['nid'] = arg(1);
+						$nodeLogPage->field_user_ref['und']['0']['uid'] = $user->uid;
+						/*
+						$nodeLogPage->field_date_log = array('und' => array('0' => array(
+							'value' => date('Y-m-d H:i:s'),
+							'timezone' => 'Australia/Brisbane',
+							'timezone_db' => 'UTC',
+							'date_type' => 'datetime',
+						)));
+						*/
+						node_save($nodeLogPage);
+					}
+					
+					// Save statistics END
+				}
+				
+				if (($resultContent['node'][$courseContentKeys[$i]]->type == 'course_question') && !isset($_POST['finishform']['course_id'])) // To prevent 
+				{
+					
+					// Display question
+					if (isset($_POST['questionform']) && $_POST['questionform']['choicefield'])
+					{
+						$resultAnswers = getAnswerOptionIds();
+						if ($resultAnswers[$_POST['questionform']['choicefield']]->field_answer_bool_correct['und'][0]['value'])
+						{
+							drupal_set_message('Correct answer! ' .  $resultAnswers[$_POST['questionform']['choicefield']]->field_hint_text['und'][0]['value']);
+						}
+						else
+						{
+							//print drupal_render(drupal_get_form('ish_courses_form_answer'));
+							return drupal_get_form('ish_courses_form_answer');
+						}
+					}
+					else
+					{
+						//print drupal_render(drupal_get_form('ish_courses_form_answer'));
+						return drupal_get_form('ish_courses_form_answer');
+					}
+
+				}
+						
+				// Display buttons
+				if ($i != 0)
+				{
+					// Prev
+					$resultHTML .= '<div class="nav nav-left nav-course">'.l('Prev', 'node/'.$courseContentKeys[$i-1]) . '</div>';
+				}
+				
+				if ($i != count($courseContentKeys) - 1)
+				{
+					// Next
+					$resultHTML .=   '<div class="nav nav-right nav-course">' . l('Next', 'node/'.$courseContentKeys[$i+1]) . '</div>';
+				}
+				else if ((array_search(3, $roleKeys) === false) && (array_search(8, $roleKeys) === false)) // don't allow admin to finish course
+				{
+					// Finish
+					//$resultHTML .=   '<div class="nav nav-right nav-course">' . l('Finish', 'node/'.$results[$i]->field_course_ref_node_nid . '?complete=1') . '</div>';
+					//return drupal_get_form('ish_courses_finish_btn_form');
+					$formFinish = drupal_get_form('ish_courses_finish_btn_form');
+					//dpm($formFinish);
+					$resultHTML .= drupal_render($formFinish);
+				}
+				
+				break; 
+			} // end if
+		} // end for
+	} // end if
+
+	return array(
+		'course-content-nav-btns-markup' => array(
+			'#type' => 'markup',
+			'#markup' => $resultHTML,
+		),
+	);
+}
+
+/**
+* Implements hook_form_alter().
+*/
+function ish_courses_form_alter(&$form, &$form_state, $form_id) {
+
+	// Modifying user creation / editing form
+	//dpm($form);
+	//dpm($form_id);
+	global $user;
+	$roleKeys = array_keys($user->roles);
+	//dpm(user_load($user->uid));
+	
+	if (($form_id == 'course_page_node_form') || ($form_id == 'course_question_node_form')) // add course to add form if passed
+	{
+		if ((count(arg()) == 5) && (arg(0) == 'node') && (arg(1) == 'add') && (arg(3) == 'course') && (is_numeric(arg(4))))
+		{
+			$form['field_course_ref']['und']['#default_value'] = arg(4);
+			$form['field_course_ref']['und']['0']['nid']['#default_value'] = arg(4);
+			//dpm($form);
+		}
+	}
+	else if ($form_id == 'branch_node_form') // Select proper company and disable for all users
+	{
+		// If not iFactory admin
+		
+		// Disable company selection for everyone but IF admin
+		if (!(array_search(3, $roleKeys) !== false)) {
+			$form['field_company_ref']['#disabled'] = true;
+			if (!(array_search(8, $roleKeys) !== false)) { // not show for anyone but ISH admin
+					$form['field_company_ref']['#attributes']['class'][] = 'field-user-no-bunga-bunga';
+			}
+		}
+		
+		
+		if ((count(arg()) == 5) && (arg(1) == 'add') && (arg(3) == 'company'))
+		{
+			$form['field_company_ref']['und']['#default_value'] = array(arg(4));
+		}
+		/*
+		else if ((count(arg()) == 3) && (arg(1) == 'edit'))
+		{
+		}
+		*/
+	}
+	else if ($form_id == 'user_register_form') // AND check if user not an admin
+	{
+		if ((count(arg()) == 7) && 
+			(arg(3) == 'role') && 
+			((arg(5) == 'branch') || (arg(5) == 'company')) && 
+			is_numeric(arg(4)) && is_numeric(arg(6))
+			) 
+		{
+			/*
+			$form['account']['status']['#disabled'] = true;
+			$form['account']['roles']['#disabled'] = true;
+			$form['account']['roles']['#attributes']['class'][] = 'field-user-no-bunga-bunga';
+			$form['field_branch_ref']['#disabled'] = true;
+			*/
+			$uActive = user_load($user->uid);
+			$branchObj = node_load($uActive->field_branch_ref['und']['0']['nid']);
+			
+			$branchRefObj = NULL;
+			if (arg(5) == 'branch') {
+				$branchRefObj = node_load(arg(6));
+			}
+			
+			if ((array_search(5, $roleKeys) !== false) && // branch administrator
+				((arg(4) == 5) || (arg(4) == 6))
+				&& (arg(5) == 'branch') && (arg(6) == $uActive->field_branch_ref['und']['0']['nid'])
+				)
+			{
+				$form['account']['status']['#disabled'] = true;
+				//$form['account']['status']['#type'] = 'hidden';
+				//$form['field_branch_ref']['#type'] = 'hidden';
+				$form['field_branch_ref']['#disabled'] = true;
+				$form['field_branch_ref']['und']['#default_value'] = array(arg(6));
+				//$form['field_branch_ref']['#default_value'] = arg(6);
+				
+				$form['account']['roles']['#disabled'] = true;
+				$form['account']['roles']['#attributes']['class'][] = 'field-user-no-bunga-bunga';
+				$form['account']['roles']['#default_value'] = array(arg(4));
+				
+			}
+			else if ((array_search(4, $roleKeys) !== false) // corporate administrator
+				&& ((arg(4) == 5) || (arg(4) == 6) || (arg(4) == 4))
+				&& (((arg(5) == 'branch') && ($branchRefObj->field_company_ref['und']['0']['nid'] == $branchObj->field_company_ref['und']['0']['nid'])) 
+					|| ((arg(5) == 'company') && (arg(6) == $branchObj->field_company_ref['und']['0']['nid'])))
+				)
+			{
+				$form['account']['status']['#type'] = 'hidden';
+				if (arg(5) == 'branch') {
+					$form['field_branch_ref']['und']['#default_value'] = array(arg(6));
+					//$form['field_branch_ref']['#default_value'] = arg(6);
+				}
+				
+				// Disable roles selection for everyone but IF admin
+				if (!(array_search(3, $roleKeys) !== false)) {
+					$form['account']['roles']['#attributes']['class'][] = 'field-user-no-bunga-bunga';
+					$form['account']['roles']['#disabled'] = true;
+				}
+				
+				$form['account']['roles']['#default_value'] = array(arg(4));
+			}
+			else if (((array_search(8, $roleKeys) !== false)
+				|| (array_search(3, $roleKeys) !== false)
+				) // ISH administrator or IF admin
+				&& ((arg(4) == 5) || (arg(4) == 6) || (arg(4) == 4) || (arg(4) == 8) || (arg(4) == 7))
+				)
+			{
+				$form['account']['status']['#type'] = 'hidden';
+				if (arg(5) == 'branch') {
+					$form['field_branch_ref']['und']['#default_value'] = array(arg(6));
+					//$form['field_branch_ref']['#default_value'] = arg(6);
+					//dpm($form);
+				}
+				
+				// Disable branch selection when creating individual and ISH admin
+				if (((arg(4) == 8) || (arg(4) == 7))) {
+					$form['field_branch_ref']['#disabled'] = true;
+					$form['account']['roles']['#attributes']['class'][] = 'field-user-no-bunga-bunga';
+				}
+				
+				$form['account']['roles']['#disabled'] = true;
+				$form['account']['roles']['#attributes']['class'][] = 'field-user-no-bunga-bunga';
+				$form['account']['roles']['#default_value'] = array(arg(4));
+			}
+			else
+			{
+				drupal_goto('user');
+			}
+		} 
+		else if ($user->uid != 0) // Allow anonimous users to register
+		{
+		/*
+		}
+		else 
+		{
+		*/
+			drupal_goto('user');
+		}
+	}
+	else if ($form_id == 'user_profile_form') // edit user form
+	{
+		$uActive = user_load($user->uid);
+		$uToEdit = user_load(arg(1));
+		$roleKeysToEdit = array_keys($uToEdit->roles);
+		
+		// Disable branch selection for users below when editing
+		if ( (array_search(7, $roleKeysToEdit) !== false) 
+			|| (array_search(8, $roleKeysToEdit) !== false)
+			|| (array_search(3, $roleKeysToEdit) !== false)
+			|| (count($roleKeysToEdit) == 1) // one for failed on creation cases
+			) // IF admin, individual or ISH administrator
+		{
+			$form['field_branch_ref']['#disabled'] = true;
+		}
+		
+		// TODO: make sure user edited is the one allowed
+		if (array_search(5, $roleKeys) !== false) // branch administrator
+		{
+			$form['account']['status']['#type'] = 'hidden';
+			$form['field_branch_ref']['#type'] = 'hidden';
+			$form['field_branch_ref']['#default_value'] = $uActive->field_branch_ref['und']['0']['nid'];
+			$form['account']['roles']['#disabled'] = true;
+			$form['account']['roles']['#attributes']['class'][] = 'field-user-no-bunga-bunga';
+			
+		}
+		else if ( (array_search(4, $roleKeys) !== false) 
+			|| (array_search(8, $roleKeys) !== false)
+			|| (array_search(3, $roleKeys) !== false)
+			) // corporate administrator or ISH administrator or IF admin
+		{
+			$form['account']['status']['#type'] = 'hidden';
+			
+			// Disable roles selection for everyone but IF admin
+			if (!(array_search(3, $roleKeys) !== false)) {
+				$form['account']['roles']['#disabled'] = true;
+				$form['account']['roles']['#attributes']['class'][] = 'field-user-no-bunga-bunga';
+			}
+		}
+		else if ( (array_search(6, $roleKeys) !== false) 
+			|| (array_search(7, $roleKeys) !== false)
+			&& ($user->uid == arg(1))) // individual or branch user
+		{
+			$form['account']['status']['#type'] = 'hidden';
+			$form['field_branch_ref']['#type'] = 'hidden';
+			$form['account']['roles']['#disabled'] = true;
+			$form['account']['roles']['#attributes']['class'][] = 'field-user-no-bunga-bunga';
+			
+			$form['field_branch_ref']['#default_value'] = $uActive->field_branch_ref['und']['0']['nid'];
+		}
+		else
+		{
+			drupal_goto('user');
+		}
+	}
+	else if ($form_id == 'credit_request_node_form')
+	{
+		$form['title']['#type'] = 'hidden';
+		if (!strlen($form['title']['#default_value']))
+		{
+			global $user;
+			$form['title']['#default_value'] = "Autorequest-" . $user->uid .'-'. date("YmdHis");
+			$form['actions']['submit']['#value'] = 'Request';
+		}
+		else
+		{
+			$form['field_no_credits_request']['#disabled'] = true;
+		}
+		
+		if ((count(arg()) > 2) && (arg(2) == 'edit')) // font allow users to approve credits without right amount of credits
+		{
+			$userActive = user_load($user->uid);
+			
+			//dpm($form);
+			$creditRequest = $form['field_no_credits_request']['und']['0']['value']['#default_value'];
+			$creditsAvailable = $userActive->field_user_credits['und']['0']['value'];
+			//dpm($creditRequest);
+			//dpm($creditsAvailable);
+			
+			if ($creditRequest > $creditsAvailable)
+			{
+				$form['actions'] = array();
+				drupal_set_message('Not enough credits to continue.', 'warning');
+			}
+		}
+		
+	}
+	
+
+}
+
+/**
+* Implements hook_block_info().
+*/
+function ish_courses_block_info() {
+	$blocks = array();
+	$blocks['course_action_btns'] = array(
+		'info' => t('Course actions depending on user (ISH_courses module)'),
+		'region' => 'content',
+		'status' => 1,
+		'cache' => DRUPAL_NO_CACHE,
+		'visibility' => BLOCK_VISIBILITY_LISTED,
+		'pages' => 'course/*'
+	);
+	
+	$blocks['course_content_action_btns'] = array(
+		'info' => t('Course content actions: prev/next/finish (ISH_courses module)'),
+		'region' => 'content',
+		'status' => 1,
+		'cache' => DRUPAL_NO_CACHE,
+		'visibility' => BLOCK_VISIBILITY_NOTLISTED,
+		//'pages' => 'course-*'
+	);
+	
+	$blocks['course_assign_to_user'] = array(
+		'info' => t('Assign course to user (ISH_courses module)'),
+		'region' => 'content',
+		'status' => 1,
+		'cache' => DRUPAL_NO_CACHE,
+		'visibility' => BLOCK_VISIBILITY_NOTLISTED,
+		//'pages' => 'course-*'
+	);
+	
+	return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function ish_courses_block_view($delta = '') {
+	switch ($delta) {
+		case 'course_action_btns':
+			//$block['subject'] = t('Course actions');
+			//$block['content'] = approval_block_contents($delta);
+			$block['content'] = drupal_get_form('ish_courses_form_course_action');
+			return $block;
+			break;
+		case 'course_content_action_btns':
+			//$block['content'] = drupal_get_form('ish_courses_form_course_content_action');
+			$block['content'] = ish_courses_process_course_navigation_markup();
+			return $block;
+			break;
+		case 'course_assign_to_user':
+			global $user;
+			$roleKeys = array_keys($user->roles);
+	
+			// Allow only IF admin, ISH admin, Corporate administrator, corporate branch manager user roles
+			if ((array_search(8, $roleKeys) !== false)
+			|| (array_search(3, $roleKeys) !== false)
+			|| (array_search(5, $roleKeys) !== false)
+			|| (array_search(4, $roleKeys) !== false)
+			) {
+				$block['content'] = drupal_get_form('ish_courses_form_assign_course');
+				return $block;
+				break;
+			}
+	}
+}
+
+function ish_courses_form_assign_course($form_state) {
+	
+	$results = views_get_view_result('courses_to_assign', 'references_1');
+	//dpm($results);
+	
+	$courses = array(0 => 'Select course');
+	foreach ($results as $course)
+	{
+		$title = $course->node_title . ' (' . $course->field_field_locality_term['0']['rendered']['#markup'] 
+				.') ' . $course->field_field_course_price['0']['rendered']['#markup'] . 'cr';
+		$courses[$course->nid] = $title;
+	}
+	
+	$form = array();
+	$form['form_assign_course'] = array(
+		//'#type' => 'fieldset',
+		//'#title' => t('Answers'),
+		'#tree' => TRUE,
+	);
+	
+	$form['form_assign_course']['course_id'] = array(
+		'#type' => 'select',
+		'#title' => t('Selected'),
+		'#options' => $courses,
+		//'#default_value' => $category['selected'],
+		'#description' => t('List of <strong>all courses</strong>. Select <em>course</em> to assign to user on the current page.'),
+   );
+	  
+	$form['submit'] = array('#type' => 'submit', '#value' => 'Assign');
+	
+	return $form;
+	
+
+}
+
+function ish_courses_form_assign_course_validate($form, &$form_state) {
+	
+	// Validate: check if course exists for user, then assign and check credits
+	// If assigned by corporate ISH admin, do not substract credits
+
+	$course_id = $form_state['values']['form_assign_course']['course_id'];
+	if ($course_id == 0) {
+		form_set_error('', t('Select a course to assign to user.'));
+		return;
+	}
+	else
+	{
+		$course = node_load($course_id);
+		global $user;
+		$roleKeys = array_keys($user->roles);
+		$user_active = user_load($user->uid);
+		$credit_avail = $user_active->field_user_credits['und']['0']['value'];
+		$price = $course->field_course_price['und']['0']['value'];
+		
+		// Check available 
+		if ((array_search(8, $roleKeys) === false)
+				&& (array_search(3, $roleKeys) === false)
+				 // not ISH administrator or IF admin
+				&& ($credit_avail < $price)
+			)
+		{
+			form_set_error('', t('Not enough credit available.'));
+			return;
+		}
+		
+		dpm($user_active);
+
+		//dpm(arg(0));
+		$uid_to_assign = arg(1);
+		
+		// Check if course purchased
+		$query = new EntityFieldQuery();
+		$result = $query
+			->entityCondition('entity_type', 'node')
+			->propertyCondition('status', 1)
+			->propertyCondition('type', 'purchased_course')
+			->fieldCondition('field_user_ref', 'uid',$uid_to_assign, '=')
+			->fieldCondition('field_purchased_course_ref', 'nid', $course_id, '=')
+			->execute();
+		
+		if (is_array($result) && isset($result['node']))
+		{
+			foreach($result['node'] as $record) 
+			{
+				form_set_error('', t('Course already assign to the user.'));
+				return;
+			}
+		}
+		
+	}
+}
+
+function ish_courses_form_assign_course_submit($form, &$form_state) {
+	
+	$course_id = $form_state['values']['form_assign_course']['course_id'];
+	$uid_to_assign = arg(1);
+	
+	// Create new purchased course
+	$node = new stdClass();
+	$node->type = 'purchased_course';
+	node_object_prepare($node);
+
+	$node->title = "Autopurchase-" . arg(1) . "-" . $course_id . "-" . date("YmdHis");
+	$node->field_purchased_course_ref['und']['0']['nid'] = $course_id;
+	$node->field_user_ref['und']['0']['uid'] = $uid_to_assign;
+	node_save($node);
+	
+	// Substract credits for particular users
+	global $user;
+	$roleKeys = array_keys($user->roles);
+	
+	// Check available 
+	if ((array_search(8, $roleKeys) === false)
+			&& (array_search(3, $roleKeys) === false)
+			 // not ISH administrator or IF admin
+		)
+	{
+		$user_active = user_load($user->uid);
+		$course = node_load($course_id);
+		$user_active->field_user_credits['und']['0']['value'] -= $course->field_course_price['und']['0']['value'];
+		user_save($user_active);
+	}
+	
+	drupal_set_message('Course was assigned successfully.');
+}
+
+/**
+ * A module-defined block content function displaying various actions for course.
+ */
+ function ish_courses_form_course_action($form_state) {
+	
+	// Form will only be displayed on course page
+	
+	$form = array();
+	$form['course_action_btn_form'] = array(
+		//'#type' => 'fieldset',
+		//'#title' => t('Answers'),
+		
+		'#tree' => TRUE,
+	  );
+	
+	global $user;
+	
+	
+	
+	if (!$user->uid)
+	{ 
+		$form['#action'] = url('user/register', array('absolute' => true));
+		$form['submit'] = array('#type' => 'submit', '#value' => strtoupper(t('Register to purchase the course')));
+	}
+	else
+	{
+
+		$purchasedCourseNID = 0;
+		$btnTitle = '';
+		$formActionURL = '';
+		$courseActionVal = 'view';
+		$query = new EntityFieldQuery();
+		$result = $query
+			->entityCondition('entity_type', 'node')
+			->propertyCondition('status', 1)
+			->propertyCondition('type', 'purchased_course')
+			->fieldCondition('field_user_ref', 'uid', $user->uid, '=')
+			->fieldCondition('field_purchased_course_ref', 'nid', arg(1), '=')
+			->execute();
+		
+		//dpm($result['node']);
+		// Check if course purchased
+		if (is_array($result) && isset($result['node']))
+		{
+			foreach($result['node'] as $record) 
+			{
+				$purchasedCourseNID = $record->nid;
+				
+				// Check if user need to start or continue course
+				$purchasedCourse = node_load($purchasedCourseNID);
+				//dpm($purchasedCourse);
+				
+				// If course completed
+				if ($purchasedCourse->field_completed['und']['0']['value'] == "1") {
+					$btnTitle = 'Course completed';
+					break;
+				}
+				
+				// If course not completed
+				if (count($purchasedCourse->field_last_content_ref))
+				{
+					$formActionURL = 'node/' . $purchasedCourse->field_last_content_ref['und']['0']['nid'];
+					$btnTitle = 'Continue course';
+				}
+				else
+				{
+					// Get first course content
+					$queryContent = new EntityFieldQuery();
+					$resultContent = $queryContent
+						->entityCondition('entity_type', 'node')
+						->propertyCondition('status', 1)
+						//->propertyCondition('type', 'purchased_course')
+						->fieldCondition('field_course_ref', 'nid', arg(1), '=')
+						//->fieldCondition('field_purchased_course_ref', 'nid', arg(1), '=')
+						->fieldOrderBy("weight", 'value', "asc")
+						->execute();
+					
+					$formActionURL = 'node/' . arg(1);
+					if (is_array($resultContent) && isset($resultContent['node']))
+					{
+						foreach($resultContent['node'] as $recordContent) 
+						{
+							$formActionURL = 'node/' . $recordContent->nid;
+							break;
+						}
+					}
+					
+					$btnTitle = 'Start course';
+				}
+				
+				break;
+			}
+			
+			
+		}
+		else
+		{
+			$formActionURL = 'node/' . arg(1);
+			$btnTitle = 'Purchase course';
+			$courseActionVal = 'purchase';
+		}
+		
+		if ($btnTitle == 'Course completed')
+		{
+			$form['submit'] = array('#type' => 'submit', '#value' => strtoupper(t($btnTitle)), '#disabled' => true);
+		}
+		else
+		{
+			$form['course_action_btn_form']['course_action'] = array('#type' => 'value', '#value' => $courseActionVal);
+			$form['#action'] = url($formActionURL, array());
+			$form['submit'] = array('#type' => 'submit', '#value' => strtoupper(t($btnTitle)));
+		}
+		
+	}
+	
+	return $form;
+	
+}
+
+function ish_courses_form_course_action_validate($form, &$form_state) {
+  
+	
+	// Check if user has enough points to purchase
+	if ($form_state['values']['course_action_btn_form']['course_action'] == 'purchase') {
+		global $user;
+		$userToPay = user_load($user->uid);
+		$courseToBuy = node_load(arg(1));
+		//dpm($userToPay);
+		//dpm($courseToBuy);
+		
+		//$userToPay->field_user_credits['und']['0']['value']
+		//$courseToBuy->field_course_price['und']['0']['value']
+		
+		// Check for if no errors
+		if ($userToPay->field_user_credits['und']['0']['value'] >= $courseToBuy->field_course_price['und']['0']['value'])
+		{
+			// Create new purchased course
+			$node = new stdClass();
+			$node->type = 'purchased_course';
+			node_object_prepare($node);
+
+			// Set necessary values
+			$node->title = "Autopurchase-" . $user->uid . "-" . arg(1) . "-" . date("YmdHis");
+			$node->field_purchased_course_ref['und']['0']['nid'] = arg(1);
+			$node->field_user_ref['und']['0']['uid'] = $user->uid;
+			//field_last_content_date['und']['0']['value']
+			node_save($node);
+			
+			// Take the credits off user account
+			if ($node->nid)
+			{
+				$userToPay->field_user_credits['und']['0']['value'] -= $courseToBuy->field_course_price['und']['0']['value'];
+				user_save($userToPay);
+				drupal_set_message('Success! Course purchased.');
+			}
+			else
+			{
+				form_set_error('', t('Something went wrong. Please contact administrator.'));
+				return;
+			}
+		}
+		else
+		{
+			// If not enough creadits
+			form_set_error('', t('Not enough credits. You need '. 
+				($courseToBuy->field_course_price['und']['0']['value'] - $userToPay->field_user_credits['und']['0']['value']) . 
+				' credit(s) to purchase the course.'));
+			return;
+		}
+	}
+}
+
+function ish_courses_menu() {
+	
+	$items['overview/company'] = array(
+		//'page callback' => 'node_show', 
+		'page callback' => 'ish_courses_overview_company', 
+		'access callback' => true, 
+		//'access arguments' => array('view', $companyNID),
+	);
+	$items['overview/branch'] = array(
+		'page callback' => 'ish_courses_overview_branch', 
+		'access callback' => true, 
+	);
+	return $items;
+}
+
+function ish_courses_overview_company() {
+	// Editing the company
+	global $user;
+	$uActive = user_load($user->uid);
+	$branchNID = $uActive->field_branch_ref['und']['0']['nid'];
+	//dpm(node_load($branchNID));
+	$branchObj = node_load($branchNID);
+	$companyNID = $branchObj->field_company_ref['und']['0']['nid'];
+	
+	//var_dump($uActive);
+	//exit;
+	
+    if ($companyNID)
+	{
+		// TODO: add permissions
+		drupal_goto('node/' . $companyNID);
+	}
+	else
+	{
+		drupal_goto('user');
+	}
+}
+
+function ish_courses_overview_branch() {
+	// Editing the company
+	global $user;
+	$uActive = user_load($user->uid);
+	$branchNID = $uActive->field_branch_ref['und']['0']['nid'];
+	//$branchObj = node_load($branchNID);
+	//$companyNID = $branchObj->field_company_ref['und']['0']['nid'];
+	
+    if ($branchNID)
+	{
+		// TODO: add permissions
+		drupal_goto('node/' . $branchNID);
+	}
+	else
+	{
+		drupal_goto('user');
+	}
+}

@@ -1,0 +1,1099 @@
+<?php
+
+function ifnr_custom_form_alter(&$form, &$form_state, $form_id) {
+  
+	//dpm($form);
+	
+	// Add user form modifications
+	if (($form_id == 'user_register_form') || ($form_id == 'user_profile_form'))
+	{
+		
+		//dpm($form);
+		
+		// role management
+		$currentRole = 0;
+		if (count(arg()) > 3)
+		{
+			// Stripping submodules start
+			$newValues = array();
+			foreach ($form['field_user_moduleref']['und']['#options'] as $moduleNID => $moduleVal)
+			{
+				$stripModVal = trim(strip_tags($moduleVal));
+				if (((substr($stripModVal, 1, 1) == '.') && (substr($stripModVal, 2, 1) == ' ')) ||
+				((substr($stripModVal, 2, 1) == '.') && (substr($stripModVal, 3, 1) == ' ')))
+				{
+					$newValues[$moduleNID] = $moduleVal;
+				}
+			}
+			
+			$form['field_user_moduleref']['und']['#options'] = $newValues;
+			
+			// Stripping submodules end
+			
+			$currentRole = (int)arg(3);
+			foreach ($form['account']['roles']['#options'] as $key => $value)
+			{
+				if ($key != $currentRole)
+				{
+					unset($form['account']['roles']['#options'][$key]);
+				}
+			}
+			//$form['field_answer_companyref']['und']['#type'] = 'hidden';
+			//$form['field_answer_companyref']['und']['#default_value'] = '_none';
+			$form['field_answer_companyref']['und']['#disabled'] = true;
+		}
+		
+		// Preselecting values in user registration form based on permissions
+		if ( (count(arg()) == 4) && in_array( (int)arg(3), array(4,5) ) )
+		{
+			$form['account']['roles']['#default_value'] = array($currentRole);
+			$form['field_user_role']['#attributes']['class'][] = 'form-element-hidden';
+			$form['field_answer_companyref']['#attributes']['class'][] = 'form-element-hidden';
+			//$form['field_answer_companyref']['und']['#type'] = 'hidden';
+			//$form['field_user_moduleref']['und']['#type'] = 'hidden';
+			
+			// Select all modules & disable
+			$form['field_user_moduleref']['und']['#default_value'] = array_keys($form['field_user_moduleref']['und']['#options']);
+			
+		}
+		elseif ( (count(arg()) == 5) && in_array( (int)arg(3), array(6,7) ) 
+									 && in_array( (int)arg(4), array_keys($form['field_answer_companyref']['und']['#options']) ))
+		{
+			
+
+			
+			$form['account']['roles']['#default_value'] = array($currentRole);
+			$form['field_user_role']['#attributes']['class'][] = 'form-element-hidden';
+			$form['field_answer_companyref']['und']['#default_value'] = array((int)arg(4));
+			$form['field_answer_companyref']['#attributes']['class'][] = 'form-element-hidden';
+			
+		}
+		elseif ( in_array( count(arg()), array(4,5) ) )
+		{
+			watchdog("iFactory", "Invalid role format. Reference: ifnr01", array(), WATCHDOG_ALERT);
+		}
+		
+		//dpm($form['account']['roles']);
+		//dpm($form);
+		
+		// TODO: check so company user won't be able to create admins and create only for their company
+	}
+	
+	// Edit user form modifications
+	if (($form_id == 'user_profile_form'))
+	{
+		// Disable company field
+		$form['field_answer_companyref']['und']['#disabled'] = TRUE;
+		// Disable user role field
+		$form['account']['roles']['#disabled'] = TRUE;
+		
+		// Disable modules selection for everyone except standard user and select all for everyone else
+		if ((arg(0) == 'user') && (arg(2) == 'edit'))
+		{
+			$user_fields = user_load(arg(1));
+			if (!in_array(7, array_keys($user_fields->roles)))
+			{
+				$form['field_user_moduleref']['und']['#disabled'] = TRUE;
+				$form['field_user_moduleref']['und']['#default_value'] = array_keys($form['field_user_moduleref']['und']['#options']);
+			}
+		}
+	}
+	
+	// Module filtering for element form
+	if ($form_id == 'element_node_form')
+	{
+		
+		$keys = array_keys($form['field_element_moduleref']['und']['#options']);
+		for($i = count($form['field_element_moduleref']['und']['#options']) - 1; $i >= 0; $i--)
+		{
+			$option = $form['field_element_moduleref']['und']['#options'][$keys[$i]];
+			$option_arr = explode(' ', $option);
+			if (substr_count($option_arr[1], '.') < 2)
+			{
+				//dpm($option_arr[1] . '; ' . substr_count($option_arr[1], '.'));
+				unset($form['field_element_moduleref']['und']['#options'][$keys[$i]]);
+			}
+		}
+		
+		//dpm($form['field_element_moduleref']['und']['#options']);
+	}
+	
+	
+	// Module filtering for user form
+	// TODO : merge with above function
+	if (($form_id == 'user_register_form') || ($form_id == 'user_profile_form'))
+	{
+		//dpm($form);
+		
+		global $user;
+		if (!in_array(7, array_keys($user->roles)))
+		{
+		
+			$keys = array_keys($form['field_user_moduleref']['und']['#options']);
+			for($i = count($form['field_user_moduleref']['und']['#options']) - 1; $i >= 0; $i--)
+			{
+				$option = $form['field_user_moduleref']['und']['#options'][$keys[$i]];
+				$option_arr = explode(' ', $option);
+				if (substr_count($option_arr[1], '.')  > 1)
+				{
+					//dpm($option_arr[1] . '; ' . substr_count($option_arr[1], '.'));
+					unset($form['field_user_moduleref']['und']['#options'][$keys[$i]]);
+				}
+			}
+		}
+		
+		//dpm($form['field_user_moduleref']['und']['#options']);
+	}
+	
+	// Filter archived articles
+	if ($form_id == 'views_exposed_form')
+	{
+		
+		if (isset($form['field_company_archived_value']))
+		{
+			$form['field_company_archived_value']['#options']['All'] = "All";
+			$form['field_company_archived_value']['#options'][0] = "Active";
+			$form['field_company_archived_value']['#options'][1] = "Archived";
+		}
+	}
+}
+
+// Views hook: adding ajax from to elements vies
+function ifnr_custom_views_pre_render(&$view)
+{
+	if (($view->name == 'elements_view') && (count(arg()) > 0) && (arg(0) == 'moduleset'))
+	{
+		// dpm($view);
+		//$form = drupal_get_form('form_ajax_view_elements');
+		
+		
+		
+		// $formID = $form['#form_id'];
+		
+		/*
+		foreach ($view->result as &$view_row)
+		{
+			 $form['#form_id'] = $formID . '-' . $view_row->nid;
+			 //$view_row->views_php_6 = $form;
+		}
+		*/
+		//dpm($form);
+	}
+}
+
+
+function form_ajax_view_elements($form, &$form_state) {
+
+	//global $form;
+	/*
+	$_POST['form_element_view_values']['form_id'] = 'form_ajax_view_elements';
+	$_POST['form_element_view_values']['answer_nid'] = $answerNID;
+	$_POST['form_element_view_values']['field_answer_companyref'] = arg(2);
+	*/
+	
+	//dpm($form_state);
+	//dpm(isset($_POST)?$_POST:0);
+	
+	//$values 	= isset($_POST['form_element_view_values'])?$_POST['form_element_view_values']:$form_state['input']['form_element_view_values'];
+	$values 	= isset($form_state['values'])?$form_state['values']:$form_state['input']['form_element_view_values'];
+	$body 		= is_array($values)?$values['field_body']:'';
+	$comment	= '';
+	$answerNID  = is_array($values)?$values['answer_nid']:0;
+
+	$answer_bool	 = (isset($values['field_answer_bool'])?$values['field_answer_bool']:-1);
+	$compliance_bool = (isset($values['field_answer_compliance'])?$values['field_answer_compliance']:-1);
+	$moduleNID		 = (arg(0) == "moduleset")?arg(1):$values['field_module_nid'];
+	$companyNID		 = (arg(0) == "moduleset")?arg(2):$values['field_answer_companyref'];
+	$field_question_predef_no	 = (isset($values['field_question_predef_no'])?$values['field_question_predef_no']:'');
+	
+	
+	$qstnref = $values['field_answer_qstnref'];
+	$answer = NULL;
+	
+	// If form has been submitted
+	if (isset($form_state['values']))
+	{
+		
+		//cache_clear_all();
+		//$answerNID   = (int)$form_state['values']['answer_nid'];
+		//$companyNID  = (int)$form_state['values']['field_answer_companyref'];
+		
+		if ($answerNID == 0)
+		{
+			$query = new EntityFieldQuery;
+			$result = $query
+				->entityCondition('entity_type', 'node')
+				->propertyCondition('status', 1)
+				->propertyCondition('type', 'answer')
+				->fieldCondition('field_answer_qstnref', 'nid', $qstnref, '=')
+				->fieldCondition('field_answer_companyref', 'nid', $companyNID, '=')
+				//->fieldCondition('field_answer_bool', 'value', '1', '=')
+				->execute();
+			
+			if (is_array($result) && isset($result['node']))
+			{
+				foreach($result['node'] as $record) 
+				{
+					$answerNID = $record->nid;
+					break;
+				}
+			}
+		}
+		
+		$form_state['values']['answer_nid'] = $answerNID;
+		
+		
+		// Save or update answer
+		if ($form_state['values']['answer_nid'] == 0)
+		{
+			// TODO: PROPER ANSWER LOOKUP
+			$answer = node_load(25);
+			$answer->title = 'Auto-answer-'.$form_state['values']['field_answer_companyref'].'-'.$form_state['values']['field_answer_qstnref'].'-'.time();
+			$answer->nid = 0;
+			$answer->vid = 0;
+			$answer->created = time();
+			$answer->field_answer_qstnref['und'][0]['nid'] = $qstnref;
+			$answer->field_answer_companyref['und'][0]['nid'] = $companyNID;
+		}
+		else
+		{
+			$answer = node_load($answerNID);
+		}
+		
+		// Put answer back into No if it is not complient
+		if ($form_state['values']['answer_nid'] != 0)
+		{
+			if (($answer->field_answer_compliance['und'][0]['value'] != $form_state['values']['field_answer_compliance']) &&
+																							  ($form_state['values']['field_answer_compliance'] < 1))
+			{
+				// Client requires saved answer all the time
+				//$form_state['values']['field_answer_bool'] = -1;
+				//$answer_bool = -1;
+			}
+			
+			if (($answer->field_answer_bool['und'][0]['value'] != $form_state['values']['field_answer_bool']) &&
+															(($form_state['values']['field_answer_bool'] == 0) || ($form_state['values']['field_answer_bool'] == 1)))
+			{
+				$form_state['values']['field_answer_compliance'] = -1;
+				$compliance_bool = -1;
+			}
+		}
+		
+		//$form = form_ajax_view_elements($form, $form_state);
+		
+		// Set values
+		$answer->changed = time();
+		$answer->body['und'][0]['value'] 					= aes_encrypt($form_state['values']['answer_body']['value']); // AES module
+		$answer->field_answer_bool['und'][0]['value'] 		= $form_state['values']['field_answer_bool'];
+		$answer->field_answer_compliance['und'][0]['value'] = $form_state['values']['field_answer_compliance'];
+		$answer->field_answer_comment['und'][0]['value'] 	= $form_state['values']['field_answer_comment']['value'];
+		
+		node_save($answer);
+		$form_state['values']['answer_nid'] = $answer->nid;
+		$answerNID  = $answer->nid;
+		//$form['answer-ajax-form-'.$questionNID]['element']['answer_nid']['#value'] = $answer->nid;
+		//$_POST['answer_nid'] = $answer->nid;
+	}
+	
+	// If AJAX submitted
+	/*
+	if (isset($form_state['values']) && !$answerNID)
+	{
+		$query = new EntityFieldQuery;
+		$result = $query
+			->entityCondition('entity_type', 'node')
+			->propertyCondition('status', 1)
+			->propertyCondition('type', 'answer')
+			->fieldCondition('field_answer_qstnref', 'nid', $qstnref, '=')
+			->fieldCondition('field_answer_companyref', 'nid', $companyNID, '=')
+			//->fieldCondition('field_answer_bool', 'value', '1', '=')
+			->execute();
+		
+		if (is_array($result) && isset($result['node']))
+		{
+			foreach($result['node'] as $record) 
+			{
+				$answerNID = $record->nid;
+				break;
+			}
+		}
+	}
+	*/
+	
+	if (($answerNID) && (!$answer))
+	{
+		$answer = node_load($answerNID);
+		$body 				= aes_decrypt($answer->body['und'][0]['value']); // AES
+		$answer_bool 		= $answer->field_answer_bool['und'][0]['value'];
+		$comment 			= $answer->field_answer_comment['und'][0]['value'];
+		$compliance_bool 	= $answer->field_answer_compliance['und'][0]['value'];
+	}
+	
+	$update_div_name = 'replace_textfield_div_' . $qstnref;
+
+	global $user;
+	$roles = array_keys($user->roles);
+	$disable_company = false;
+	
+	//$qusetion = node_load($values['field_answer_qstnref']);
+	$qusetion = node_load($qstnref);
+	//$module = node_load($qusetion->field_element_moduleref['und'][0]['nid']); // BUG: loads only first reference. not suitable for multi referencing
+	$module = node_load($moduleNID);
+	//$answerNID = (isset($values['answer_nid'])?$values['answer_nid']:$values['answer_nid']);
+
+	// Choose the color
+	$elem_style = array('form-ajax-view-elements');
+	if ($compliance_bool == "1")
+	{
+		$elem_style[] = 'element-green';
+	}
+	//elseif (($answerNID) && (($compliance_bool == "0") || (($compliance_bool == "0") && ($answer_bool == "-1"))))
+	elseif (($answerNID) && ($compliance_bool == "0"))
+	{
+		$elem_style[] = 'element-red';
+	}
+	elseif (($answerNID) && (($compliance_bool != "1") && ($compliance_bool != "0")))
+	{
+		$elem_style[] = 'element-blue';
+	}
+
+	$form = array(
+		'#id' => 'form-ajax-view-elements-'.$qstnref,
+		'#attributes' => array(
+			'class' => $elem_style,	
+			/*'onclick' => "alert('over');",
+			'onSubmit' => "alert('out');",*/
+		  ),
+		'#prefix' => '<div id="testajaxwrapper-'.$qstnref.'">',
+		'#suffix' => '</div>',
+	);
+	
+	$form['answer-ajax-form-'.$qstnref] = array(
+		'#type' => 'markup',
+		'#attributes' => array(
+			'class' => $elem_style,	
+		  ),
+	);
+	//$update_div_name = 'answer-ajax-form-'.$qstnref;
+	
+	
+	// Generating form
+	$titleFormatted = (strlen($qusetion->title) > 120)?(substr($qusetion->title, 0, 117).'...'):$qusetion->title;
+	$form['answer-ajax-form-'.$qstnref]['element'] = array(
+		'#type' => 'fieldset',
+		//'#title' =>  '<span title="' . $qusetion->title . '"><span class="color-title" title="' . $titleFormatted . '">' . $module->title .'.'. $values['field_row_id'] . '.</span> ' . $titleFormatted . '</span>', // Client requested remove numbering, 18-Nov
+		'#title' =>  '<span title="' . $qusetion->title . '">' . $titleFormatted . '</span>',
+		//'#weight' => 5,
+		'#collapsible' => TRUE,
+		'#collapsed' => !isset($form_state['values']), // to open first one
+		//'#collapsed' => TRUE,
+	);
+
+	// Sorten title
+	if (strlen($qusetion->title) > 120)
+	{
+		$form['answer-ajax-form-'.$qstnref]['element']['div_markup_question_repeat'] = array(
+			'#type' => 'item', 
+			'#title' => t('Question'),
+			'#markup' => '<div class="qhint">' . $qusetion->title . '</div>',
+			);
+	}
+	
+	// Question hint body
+	//$responseMarkupTitle = ($values['field_row_id'] == 1)?t('Your response must address the points identified above: '):'';
+	$form['answer-ajax-form-'.$qstnref]['element']['div_markup_element'] = array(
+		'#type' => 'item', 
+		'#title' => t('Your response must address the points identified below: '),
+		'#markup' => '<div class="qhint">'.str_replace(chr(10),'<br />',$qusetion->body['und'][0]['value']) . '</div>',
+	);
+	
+	// Hidden field to display in body
+	$form['answer-ajax-form-'.$qstnref]['element']['field_question_predef_no'] = array(
+		'#type' => 'hidden',
+		'#default_value' => $field_question_predef_no,
+	);
+	
+	$form['answer-ajax-form-'.$qstnref]['element']['fs_response'] = array(
+		'#type' => 'fieldset',
+		'#collapsible' => FALSE,
+		'#collapsed' => FALSE, // to open first one
+		//'#collapsed' => TRUE,
+		'#attributes' => array(
+			'class' => array('fs-nostyle'),
+		),
+	);
+	
+	$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance'] = array(
+		'#type' => 'fieldset',
+		'#collapsible' => FALSE,
+		'#collapsed' => FALSE, // to open first one
+		'#attributes' => array(
+			'class' => array('fs-nostyle'),
+		),
+	);
+	
+	if (in_array($roles[count($roles) - 1], array(3,4,5) )) // Answer form for Novus users
+	{
+		// Predefined answer display
+		$form['answer-ajax-form-'.$qstnref]['element']['fs_response']['div_markup_predef'] = array(
+			'#type' => 'item', 
+			'#title' => t('Predefined answer: '),
+			'#markup' => '<div class="qhint">'.str_replace(chr(10),'<br />',$field_question_predef_no). '</div>',
+		);
+		
+		//dpm($answer_bool);
+		$form['answer-ajax-form-'.$qstnref]['element']['fs_response']['field_answer_bool'] = array(
+			'#type' => 'radios',
+			'#title' => t('Response'),
+			'#options' => array(
+				'1' => 'Yes',
+				'0' => 'No',
+			),
+			'#default_value' => ($answerNID)?$answer_bool:'1',
+			'#prefix' => '<div id="field_answer_bool-wrapper-'.$qstnref.'" class="ajax-rand-'.rand(100,999).'">',
+			'#suffix' => '</div>',
+		);
+	
+		
+		// This entire form element will be replaced with an updated value.
+		$form['answer-ajax-form-'.$qstnref]['element']['fs_response']['answer_body'] = array(
+			//'#type' => 'textarea',
+			'#type' => 'text_format',
+			'#base_type' => 'textarea',
+			'#format' => isset($edit['format']) ? $edit['format'] : NULL,
+			'#prefix' => '<div class="ck-editor">',
+			'#suffix' => '</div>',
+			
+			'#title' => t(''),
+			//'#description' => t("You response must address above points."),
+			'#default_value' => $body,
+		);
+		
+		$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance']['field_answer_compliance'] = array(
+			'#type' => 'radios',
+			'#title' => t('Compliance'),
+			'#options' => array(
+				'1' => 'Yes',
+				'0' => 'No',
+			),
+			'#default_value' => $compliance_bool,
+			/*
+			'#ajax' => array(
+				'callback' => 'form_ajax_view_elements_callback',
+				'wrapper' => $update_div_name,
+			),
+			*/
+		);
+		
+		// Comment style and field
+		$style = '';
+		if (($compliance_bool == "0"))
+		{
+			$style = 'display: block; opacity:1;';
+		}
+		else
+		{
+			$style = 'display: none; opacity:0;';
+		}
+		
+		// This entire form element will be replaced with an updated value.
+		$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance']['field_answer_comment'] = array(
+			//'#type' => 'textarea',
+			'#type' => 'text_format',
+			'#base_type' => 'textarea',
+			'#format' => isset($edit['format']) ? $edit['format'] : NULL,
+
+			'#title' => t('Compliance comment'),
+			//'#attributes' => array('class' => $style),
+			'#prefix' => '<div class="ck-editor toggle-comment-wrapper" style="'.$style.'">',
+			'#suffix' => '</div>',
+			'#default_value' => $comment,
+			/*
+			'#ajax' => array(
+				'callback' => 'form_ajax_view_elements_callback',
+				'wrapper' => $update_div_name,
+			),
+			*/
+		);
+		
+		
+		
+	}
+	else // Answer form for company users
+	{
+		
+		if ($compliance_bool > 0)
+			$disable_company = true;
+		
+		$form['answer-ajax-form-'.$qstnref]['element']['fs_response']['field_answer_bool'] = array(
+			'#type' => 'radios',
+			'#title' => t('Response'),
+			'#options' => array(
+				'1' => 'Yes',
+				'0' => 'No',
+			),
+			'#default_value' => ($answerNID)?$answer_bool:'1',
+			/*
+			'#ajax' => array(
+				'callback' => 'form_ajax_view_elements_callback',
+				'wrapper' => $update_div_name,
+			),
+			*/
+			'#disabled' => $disable_company,
+		);
+	
+		$ck_extra_class='';
+		if ($disable_company) {
+			$form['answer-ajax-form-'.$qstnref]['element']['fs_response']['answer_markup'] = array(
+				//'#type' => 'textarea',
+				'#type' => 'markup',
+				//'#base_type' => 'textarea',
+				//'#description' => t("You response must address the above points."),
+				'#value' => '<div class="ck-markup">'.$body.'</div>',
+				//'#disabled' => $disable_company,
+			);
+			$ck_extra_class = ' ck-hide';
+		}
+		
+		// This entire form element will be replaced with an updated value.
+		$form['answer-ajax-form-'.$qstnref]['element']['fs_response']['answer_body'] = array(
+			//'#type' => 'textarea',
+			'#type' => 'text_format',
+			'#base_type' => 'textarea',
+			'#format' => isset($edit['format']) ? $edit['format'] : NULL,
+			'#prefix' => '<div class="ck-editor '.$ck_extra_class.'">',
+			'#suffix' => '</div>',
+			
+			'#title' => t(''),
+			//'#description' => t("You response must address the above points."),
+			'#default_value' => $body,
+			//'#disabled' => $disable_company,
+		);
+		
+		$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance']['field_answer_compliance'] = array(
+			'#type' => 'hidden',
+			'#default_value' => -1,//$compliance_bool //
+		); 
+
+		// Comment style and field
+		$style = '';
+		if (strlen($comment) && ($compliance_bool == "0"))
+		{
+			$style = 'display: block; opacity:1;';
+		}
+		else
+		{
+			$style = 'display: none; opacity:0;';
+		}
+		
+		$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance']['div_markup_comment'] = array(
+			'#type' => 'item', 
+			'#title' => t('Compliance comment'),
+			'#markup' => '<div class="qhint">'.str_replace(chr(10),'<br />',$comment) . '</div>',
+			'#prefix' => '<div class="toggle-comment-wrapper" style="'.$style.'">',
+			'#suffix' => '</div>',
+		);
+		
+		$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance']['field_answer_comment'] = array(
+			'#type' => 'hidden',
+			//'#title' => t('Compliance comment'),
+			'#default_value' => $comment,
+			//'#disabled' => TRUE,
+
+		);
+	}
+	 
+
+	// field_answer_compliance
+	$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance']['answer_nid'] = array(
+		'#type' => 'hidden',
+		//'#title' => t(''),
+		'#default_value' => $answerNID,
+		/*
+		'#ajax' => array(
+			'callback' => 'form_ajax_view_elements_callback',
+			'wrapper' => $update_div_name,
+		),
+		*/
+		//'#description' => t("Say something about why you chose. Id: ") . 
+		//	(isset($form_state['values']['field_answer_bool'])?$form_state['values']['field_answer_bool']:$values['answer_nid']),
+	); 
+	
+
+	$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance']['field_answer_qstnref'] = array(
+		'#type' => 'hidden',
+		//'#title' => t(''),
+		'#default_value' => $values['field_answer_qstnref']
+	); 
+	
+	$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance']['field_answer_companyref'] = array(
+		'#type' => 'hidden',
+		//'#title' => t(''),
+		'#default_value' => $values['field_answer_companyref']
+	); 
+	
+	$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance']['field_row_id'] = array(
+		'#type' => 'hidden',
+		'#default_value' => $values['field_row_id']
+	); 
+	
+	$form['answer-ajax-form-'.$qstnref]['element']['fs_compliance']['field_module_nid'] = array(
+		'#type' => 'hidden',
+		'#default_value' => $moduleNID,
+	); 
+	
+	//dpm($elem_style);
+	/*
+	$form['answer-ajax-form-'.$qstnref]['element']['btn_submit_ajax'] = array(
+		'#type' => 'submit',
+		'#value' => t('Save'), 
+		'#prefix' => '<div id="'.$update_div_name.'">',
+		'#suffix' => '</div>',
+		'#ajax' => array(
+			'callback' => 'form_ajax_view_elements_callback',
+			//'wrapper' => $update_div_name,
+			//'wrapper' => 'answer-ajax-form-'.$qstnref,
+			//'method' => 'replace',
+			'effect' => 'fade',
+			'access arguments' => TRUE,
+    		//'type' => MENU_CALLBACK,
+		),
+	);
+	*/
+
+	/* start test */
+	
+	
+	//dd('');
+	//dd('betapp_testajax_form');
+	
+	$form['answer-ajax-form-'.$qstnref]['element']['btn_color-'.$qstnref] = array(
+		'#type' => 'button',
+		'#id' => 'btn_color-'.$qstnref,
+		'#default_value' => 'Save',
+		'#ajax' => array(
+			'callback' => 'form_ajax_view_elements_callback',
+			'wrapper' => 'testajaxwrapper-'.$qstnref,
+			'method' => 'replace',
+			'effect' => 'fade',
+			'rndid' => rand(10, 99),
+		),
+	);
+	
+	$prevval = '(blank)';
+	if (isset($form_state['values']['btn_color-'.$qstnref])) {
+		$prevval = $form_state['values']['btn_color-'.$qstnref];
+		dd('prevval : ' . $prevval);
+	}
+	
+	if ($prevval != '(blank)')
+	{
+		$form['answer-ajax-form-'.$qstnref]['element']['btn_color-'.$qstnref]['#value'] = 'Saved. Press to save again';
+	}
+	else
+	{
+		$form['answer-ajax-form-'.$qstnref]['element']['btn_color-'.$qstnref]['#value'] = $form['answer-ajax-form-'.$qstnref]['element']['btn_color-'.$qstnref]['#default_value'];
+	}
+	
+	/*
+	$elem_style[0] = 'inp';
+	$form['inp-'.$qstnref] = array(
+		'#type' => 'textfield',
+		'#value' => $prevval,
+		'#id' => 'inp-'.$qstnref,
+		'#attributes' => array(
+			'class' => $elem_style,	
+		  ),
+	);
+	dd('newval  : ' . $form['answer-ajax-form-'.$qstnref]['element']['btn_color-'.$qstnref]['#value']);
+	*/
+	
+	/* end test */
+	
+	// If form has been submitted
+	if (isset($form_state['values']))
+	{
+		/*
+		dpm($form);
+		dpm($form_state);
+		*/
+	}
+	
+	return $form;
+}
+
+function form_ajax_view_elements_callback(&$form, &$form_state) {
+	// The form has already been submitted and updated. We can return the replaced
+	// item as it is.
+	
+	//dpm($_POST);
+	$answer = NULL;
+	
+	// load answer if exists
+	$questionNID = (int)$form_state['values']['field_answer_qstnref'];
+	/*
+	$answerNID   = (int)$form_state['values']['answer_nid'];
+	$companyNID  = (int)$form_state['values']['field_answer_companyref'];
+	
+	if ($answerNID == 0)
+	{
+		$query = new EntityFieldQuery;
+		$result = $query
+			->entityCondition('entity_type', 'node')
+			->propertyCondition('status', 1)
+			->propertyCondition('type', 'answer')
+			->fieldCondition('field_answer_qstnref', 'nid', $questionNID, '=')
+			->fieldCondition('field_answer_companyref', 'nid', $companyNID, '=')
+			//->fieldCondition('field_answer_bool', 'value', '1', '=')
+			->execute();
+		
+		if (is_array($result) && isset($result['node']))
+		{
+			foreach($result['node'] as $record) 
+			{
+				$answerNID = $record->nid;
+				break;
+			}
+		}
+	}
+	
+	$form_state['values']['answer_nid'] = $answerNID;
+	
+	
+	// Save or update answer
+	if ($form_state['values']['answer_nid'] == 0)
+	{
+		// TODO: PROPER ANSWER LOOKUP
+		$answer = node_load(25);
+		$answer->title = 'Auto-answer-'.$form_state['values']['field_answer_companyref'].'-'.$form_state['values']['field_answer_qstnref'].'-'.time();
+		$answer->nid = 0;
+		$answer->vid = 0;
+		$answer->created = time();
+		$answer->field_answer_qstnref['und'][0]['nid'] = $questionNID;
+		$answer->field_answer_companyref['und'][0]['nid'] = $companyNID;
+	}
+	else
+	{
+		$answer = node_load($answerNID);
+	}
+	
+	// Put answer back into No if it is not complient
+	if ($form_state['values']['answer_nid'] != 0)
+	{
+		if (($answer->field_answer_compliance['und'][0]['value'] != $form_state['values']['field_answer_compliance']) &&
+																						  ($form_state['values']['field_answer_compliance'] < 1))
+		{
+			$form_state['values']['field_answer_bool'] = -1;
+			$form['answer-ajax-form-'.$questionNID]['element']['field_answer_bool']['#value'] = -1;
+			//$_POST['field_answer_bool'] = -1;
+		}
+		
+		if (($answer->field_answer_bool['und'][0]['value'] != $form_state['values']['field_answer_bool']) &&
+														(($form_state['values']['field_answer_bool'] == 0) || ($form_state['values']['field_answer_bool'] == 1)))
+		{
+			$form_state['values']['field_answer_compliance'] = -1;
+			$form['answer-ajax-form-'.$questionNID]['element']['field_answer_compliance']['#value'] = -1;
+			//$_POST['field_answer_compliance'] = -1;
+		}
+	}
+	
+	//$form = form_ajax_view_elements($form, $form_state);
+	
+	// Set values
+	$answer->changed = time();
+	$answer->body['und'][0]['value'] = aes_encrypt($form_state['values']['answer_body']); // AES module
+	$answer->field_answer_bool['und'][0]['value'] = $form_state['values']['field_answer_bool'];
+	$answer->field_answer_compliance['und'][0]['value'] = $form_state['values']['field_answer_compliance'];
+	$answer->field_answer_comment['und'][0]['value'] = $form_state['values']['field_answer_comment'];
+	
+	node_save($answer);
+	$form_state['values']['answer_nid'] = $answer->nid;
+	$form['answer-ajax-form-'.$questionNID]['element']['answer_nid']['#value'] = $answer->nid;
+	//$_POST['answer_nid'] = $answer->nid;
+	*/
+
+	//dpm('callback');
+	//dpm($form);
+	//dpm($form_state);
+
+	
+	//$form_state['values']['answer_nid'] = $answer->nid;
+	//$form['answer_nid']['#default_value'] = $answer->nid;
+	
+	//ajax_command_alert($answer->nid);
+	
+	/*
+	$form['answer-ajax-form-'.$questionNID]['element']['btn_submit_ajax'] = array(
+		'#suffix' => '</div><div>Saved</div>',
+	);
+	*/
+	
+	//$form['answer-ajax-form-'.$questionNID]['element']['btn_color-'.$questionNID]['#attributes']['class'][] = 'poop';
+	
+	//return $form['answer-ajax-form-'.$questionNID];
+	//return $form;
+	//return $form['answer-ajax-form-'.$questionNID]['element']['btn_color-'.$questionNID];
+	//edit-field-answer-bool
+	
+	
+	//$form['answer-ajax-form-'.$qstnref]['element']['btn_color-'.$qstnref]['#value'] = 'New value';
+	$commands = array();
+	/*
+	//$commands[] = ajax_command_replace('#answer-ajax-form-'.$questionNID, 'Bam!');
+	$commands[] = ajax_command_replace('#btn_color-'.$questionNID, drupal_render($form['answer-ajax-form-'.$questionNID]['element']['btn_color-'.$questionNID]));
+    $commands[] = ajax_command_replace('#inp-'.$questionNID, drupal_render($form['inp-'.$questionNID]));
+	*/
+	
+	
+	// HACK: resetting radio values
+	// Drupal is remebering value that was selected. Clearing cache doesn't help.
+	// Clearing #childer values if value is -1
+	$arrFields = array('fs_response'=>'field_answer_bool', 'fs_compliance'=>'field_answer_compliance');
+	$formToPost = drupal_render($form);
+	foreach ($arrFields as $fieldset=>$field)
+	{
+		if ($form['answer-ajax-form-'.$questionNID]['element'][$fieldset][$field]['#default_value'] == "-1")
+		{
+			/*
+			dpm($field);
+			dpm($formToPost);
+			$form['answer-ajax-form-'.$questionNID]['element'][$field]['1']['#children'] = ifnr_replace_checked($form['answer-ajax-form-'.$questionNID]['element'][$field]['1']['#children']);
+			$form['answer-ajax-form-'.$questionNID]['element'][$field]['0']['#children'] = ifnr_replace_checked($form['answer-ajax-form-'.$questionNID]['element'][$field]['0']['#children']);
+			$form['answer-ajax-form-'.$questionNID]['element'][$field]['#children'] = ifnr_replace_checked($form['answer-ajax-form-'.$questionNID]['element'][$field]['#children']);
+			dpm($form);*/
+			
+			$formToPost = str_replace('name="'.$field.'" value="1" checked="checked"', 'name="'.$field.'" value="1"', $formToPost);
+			$formToPost = str_replace('name="'.$field.'" value="0" checked="checked"', 'name="'.$field.'" value="0"', $formToPost);
+		}
+	}
+	
+	$commands[] = ajax_command_replace('#form-ajax-view-elements-'.$questionNID, $formToPost);
+
+	//$commands[] = ajax_command_replace('#field_answer_bool-wrapper-'.$questionNID . ' #field_answer_bool-wrapper-'.$questionNID, drupal_render($form['answer-ajax-form-'.$questionNID]['element']['field_answer_bool']));
+	//dpm($form['answer-ajax-form-'.$questionNID]['element']['field_answer_bool']);
+	//$commands[] = ajax_command_replace('#answer-ajax-form-'.$questionNID, drupal_render($form['answer-ajax-form-'.$questionNID]));
+	//	$form['answer-ajax-form-'.$qstnref]['element']['answer_nid']
+	//.removeAttr('class').addAttr('class', 'form-ajax-view-elements element-red');
+	//$commands[] = ajax_command_replace('#replace_textfield_div_'.$questionNID => drupal_render($form['answer-ajax-form-'.$qstnref]['element']['btn_color-'.$qstnref]));
+	
+	return array('#type' => 'ajax', '#commands' => $commands);
+
+	
+	//echo "$('#answer-ajax-form-".$questionNID."').html('This product is available.');";
+}
+
+function ifnr_replace_checked($strChild)
+{
+	return str_replace('checked="checked"', '', $strChild);
+}
+
+// Menu rebuild function are in template.php of the current template
+function ifnr_custom_init()
+{
+	// Sort out comapny users and add link to the company
+	/*
+	global $user;
+	$user_data = user_load($user->uid);
+	//dpm($user_data);
+	
+	//dpm(menu_load_links('main-menu'));
+	
+	if (count($user_data->field_answer_companyref) > 0)
+	{
+	
+		$menu_name = 'main-menu';
+		$link_title = "Company";
+		$link_path = "node/" . $user_data->field_answer_companyref['und'][0]['nid'];
+		menu_load_links('main-menu');
+		
+		$form_state = array(
+			'values' => array(
+			'menu_name'  => $menu_name,
+			'weight'     => 1,
+			'link_title' => $link_title,
+			'link_path'  => $link_path,
+			'module'     => 'menu',
+			'mlid'       => 0,
+			),
+		);
+		// Validate and transform the item, so it conforms with Drupal standards.
+		//menu_edit_item_validate(array(), $form_state);
+		// Save the item to database.
+		menu_link_save($form_state['values']);
+		
+		if (in_array(6, array_keys($user->roles)) || in_array(7, array_keys($user->roles)) ) 
+		{
+		}
+	}
+	
+	$menu_user = menu_load_links('menu-view-add-company-users');
+	
+	// TODO: add check for other users
+	$companyNID = (int)arg(1);
+	if ((arg(0) == "node") && $companyNID)
+	{
+		foreach ($menu_user as $menu_user_item)
+		{
+			$role = ($menu_user_item['link_title'] == "Add manager user")?6:7;
+			$menu_user_item['link_path'] = "admin/people/create/" . $role . "/" . $companyNID;
+			// Validate and transform the item, so it conforms with Drupal standards.
+			//menu_edit_item_validate(array(), $form_state);
+			// Save the item to database.
+			menu_link_save($menu_user_item);
+		}
+		//dpm($menu_user);
+	}
+
+	menu_rebuild();
+	*/
+
+}
+
+function ifnr_custom_print_to_pdf() {
+
+	
+	/*
+	global $theme_key;
+    global $base_url;
+    $themes = list_themes();
+    $theme_object = $themes[$theme_key];
+    
+	$settings = theme_get_settings($theme_key);
+    $logos = $base_url .'/'. $settings['logo_path']; //this is the logo path
+	
+	dpm($theme_object);
+	*/
+	
+	$resultHTML = array();
+	$resultHTML['content'] = '';
+	$resultHTML['title'] = '';
+	$resultHTML['site_name'] = '';
+	$resultHTML['footer_message'] = 'Copyright &copy; ' . date('Y') . ' Novus Ratio';
+
+	$counter = 1;
+	
+	//$results = views_get_view_result('module_report', 'page');
+	
+	// TODO: check for proper arg values
+	if (is_numeric(arg(5)) && is_numeric(arg(3)))
+	{
+		$args = array();
+		//$args[0] = 'node';
+		$args[0] = arg(1);
+		//$args[2] = arg(2);
+		$args[1] = arg(3); // company id
+		$args[2] = arg(5) . '.' . $counter; // module name
+		$view = views_get_view('module_report');
+
+		$display_id = 'page';
+		if (is_object($view)) {
+			
+			// Load module
+			$query = new EntityFieldQuery();
+			$result = $query
+				->entityCondition('entity_type', 'node')
+				->propertyCondition('status', 1)
+				->propertyCondition('title', arg(5))
+				->propertyCondition('type', 'module')
+				->execute();
+		
+			if (is_array($result) && isset($result['node']))
+			{
+				foreach($result['node'] as $record) 
+				{
+					$mainNode = node_load($record->nid);
+					$resultHTML['content'] .= '<p/>';
+					$resultHTML['content'] .= '<div class="print-content"><strong>MODULE</strong> ' . 
+												strtoupper($mainNode->title . '. ' . $mainNode->field_list_number['und']['0']['value']) .
+												'</div>';
+					//dpm(node_load($record->nid));
+					break;
+				}
+			}
+		
+			// Load the protocols
+			if (is_array($args)) {
+				$view->set_arguments($args);
+			}
+			if (is_string($display_id)) {
+				$view->set_display($display_id);
+			}
+			else {
+				$view->init_display();
+			}
+			$view->pre_execute();
+			$view->execute();
+
+			$prevProtocol = '';
+			while (count($view->result))
+			{
+				$firstRun = true;
+				foreach ($view->result as $answer)
+				{
+					//dpm($answer);
+					if (isset($answer->node_field_data_field_answer_qstnref_title))
+					{
+						if ($firstRun)
+						{
+							// Module header
+							if ($prevProtocol != $answer->node_field_data_field_element_moduleref_title) // Print protocol only if different
+							{
+								$resultHTML['content'] .= '<p/>';
+								//$resultHTML['content'] .= '<p/>';
+								//$resultHTML['content'] .= '<div class="print-content"><strong>Protocol</strong>: ' . 
+								$resultHTML['content'] .= '<div class="print-content"><strong>' . $answer->node_field_data_field_element_moduleref_title . 
+															' ' . $answer->field_field_list_number['0']['rendered']['#markup'] . 
+															'</strong></div>';
+								//$resultHTML['content'] .= '<p/>';
+								//$resultHTML['content'] .= '<p/>';
+								$prevProtocol = $answer->node_field_data_field_element_moduleref_title;
+							}
+							global $user, $base_url;
+							$resultHTML['title'] = '[Novus Ratio Report] Company: ' . $answer->node_field_data_field_answer_companyref_title;
+							//$resultHTML['site_name'] = '[Company] ' . $answer->node_field_data_field_answer_companyref_title;
+							$resultHTML['site_name'] = '[Generated] ' . date('Y-m-d H:i:s') . ' by ' . $user->name . ' on ' . $base_url;
+							//dpm($answer);
+						}
+						
+						// Filling fields
+						$answerBoolRes = ($answer->field_field_answer_bool['0']['rendered']['#markup'] == -1)?'Not answered':$answer->field_field_answer_bool['0']['rendered']['#markup'];
+						$complianceBoolRes = ($answer->field_field_answer_compliance['0']['rendered']['#markup'] == -1)?'Not answered':$answer->field_field_answer_compliance['0']['rendered']['#markup'];
+						//$resultHTML['content'] .= '<div class="print-content"><strong>Question</strong>: ' . $answer->node_field_data_field_answer_qstnref_title . '</div>';
+						//$resultHTML['content'] .= '<div class="print-content"><strong>Answer</strong>: ' . str_replace(array("<br>", "<br/>", "<br />"), "<p/>", $answerBoolRes) . '</div>';
+						//$resultHTML['content'] .= '<div class="print-content"><strong>Notes</strong>: ' . aes_decrypt($answer->field_body['0']['raw']['value']) . '</div>';
+						//$resultHTML['content'] .= '<div class="print-content"><strong>Compliance</strong>: ' . $complianceBoolRes . '</div>';
+						$answerBody = aes_decrypt($answer->field_body['0']['raw']['value']);
+						$resultHTML['content'] .= str_replace(array("<br>", "<br/>", "<br />", '\n', chr(13), chr(10)), "<p/>", $answerBody);
+						if (strlen($answerBody) > 5)
+						{
+							$resultHTML['content'] .= '<hr class="print-hr" />';
+							$resultHTML['content'] .= '<p/><p/>';
+						}
+						
+						//if ($counter == 15)
+						//	break;
+						
+						$firstRun = false;
+						
+					}
+					
+				}
+
+				// Setup next view
+				$firstRun = true;
+				$counter++;
+				
+				$args[2] = arg(5) . '.' . $counter; // module name
+				$view = views_get_view('module_report');
+				$view->set_arguments($args);
+				$view->set_display('page');
+				$view->pre_execute();
+				$view->execute();
+
+		
+			} // end while
+		}
+	}
+	
+	return $resultHTML;
+}
